@@ -1,0 +1,523 @@
+// discourse-matchmaking styles
+// Phase 5: Toggle + GDPR consent modal + data management
+// Phase 6: Trust Gate verification status
+
+// ── Feature Header with Toggle ──────────────────────────────────────
+.matchmaking-feature-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5em;
+  padding: 1.25em;
+  margin-bottom: 1.5em;
+  border: 1px solid var(--primary-low);
+  border-radius: 8px;
+  background: var(--primary-very-low);
+
+  .feature-header-content {
+    flex: 1;
+  }
+
+  .feature-title {
+    font-size: var(--font-up-2);
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 0.25em;
+  }
+
+  .feature-description {
+    font-size: var(--font-down-1);
+    color: var(--primary-medium);
+    line-height: 1.5;
+  }
+}
+
+// ── Toggle Switch ─────────────────────────────────────────────────
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 52px;
+  height: 28px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+  margin-top: 0.25em;
+
+  &.on {
+    background: var(--tertiary);
+  }
+
+  &.off {
+    background: var(--primary-low-mid);
+  }
+
+  .toggle-knob {
+    display: block;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--secondary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s ease;
+  }
+
+  &.on .toggle-knob {
+    transform: translateX(24px);
+  }
+
+  &.off .toggle-knob {
+    transform: translateX(0);
+  }
+}
+
+// ── Modal Overlay & Modal ─────────────────────────────────────────
+.matchmaking-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1em;
+}
+
+.matchmaking-modal {
+  background: var(--secondary);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+
+  .modal-header {
+    padding: 1.25em 1.5em;
+    border-bottom: 1px solid var(--primary-low);
+
+    h3 {
+      margin: 0;
+      font-size: var(--font-up-1);
+      font-weight: 700;
+      color: var(--primary);
+    }
+  }
+
+  .modal-body {
+    padding: 1.5em;
+
+    p {
+      color: var(--primary-high);
+      line-height: 1.6;
+      margin-bottom: 1em;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    .consent-data-list {
+      margin: 1em 0;
+      padding: 0.75em 1em;
+      border-radius: 6px;
+      background: var(--primary-very-low);
+    }
+
+    .consent-data-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5em;
+      padding: 0.4em 0;
+      color: var(--primary-high);
+      font-size: var(--font-down-1);
+      line-height: 1.5;
+
+      .consent-icon {
+        color: var(--tertiary);
+        flex-shrink: 0;
+        margin-top: 0.1em;
+      }
+    }
+
+    .consent-legal {
+      font-size: var(--font-down-1);
+      color: var(--primary-medium);
+      font-style: italic;
+    }
+
+    .consent-rights {
+      font-size: var(--font-down-1);
+      color: var(--primary-medium);
+    }
+  }
+
+  .modal-footer {
+    padding: 1em 1.5em;
+    border-top: 1px solid var(--primary-low);
+    display: flex;
+    gap: 0.75em;
+    justify-content: flex-end;
+
+    &.modal-footer-stacked {
+      flex-direction: column;
+
+      .btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  }
+}
+
+// ── Consent Gate (legacy, kept for compatibility) ─────────────────
+.matchmaking-consent-gate {
+  max-width: 600px;
+  margin: 1em 0;
+  padding: 1.25em;
+  border: 1px solid var(--primary-low);
+  border-radius: 8px;
+  background: var(--secondary);
+
+  .consent-title {
+    font-size: var(--font-up-1);
+    font-weight: 700;
+    margin-bottom: 0.5em;
+    color: var(--primary);
+  }
+
+  .consent-description {
+    color: var(--primary-high);
+    line-height: 1.5;
+    margin-bottom: 1em;
+  }
+
+  .consent-types {
+    margin-bottom: 1.25em;
+
+    .consent-type-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5em;
+      padding: 0.5em 0;
+
+      input[type="checkbox"] {
+        margin-top: 0.25em;
+      }
+
+      label {
+        color: var(--primary-high);
+        cursor: pointer;
+      }
+    }
+  }
+
+  .consent-actions {
+    display: flex;
+    gap: 0.75em;
+  }
+}
+
+// ── Verification Status Banner ──────────────────────────────────────
+.verification-status-banner {
+  padding: 1em 1.25em;
+  margin-bottom: 1.5em;
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75em;
+
+  .verification-icon {
+    font-size: var(--font-up-2);
+    flex-shrink: 0;
+    margin-top: 0.1em;
+  }
+
+  .verification-content {
+    flex: 1;
+  }
+
+  .verification-title {
+    font-weight: 700;
+    margin-bottom: 0.25em;
+  }
+
+  .verification-description {
+    font-size: var(--font-down-1);
+    line-height: 1.5;
+    margin-bottom: 0.75em;
+  }
+
+  // Pending interview — needs action
+  &.status-pending {
+    border: 1px solid var(--tertiary-low, rgba(0, 0, 0, 0.1));
+    background: var(--tertiary-very-low, rgba(0, 0, 0, 0.02));
+
+    .verification-title {
+      color: var(--tertiary);
+    }
+
+    .verification-description {
+      color: var(--primary-high);
+    }
+  }
+
+  // Under review — waiting
+  &.status-review {
+    border: 1px solid var(--highlight-low, rgba(0, 0, 0, 0.1));
+    background: var(--highlight-bg, rgba(0, 0, 0, 0.02));
+
+    .verification-title {
+      color: var(--highlight-medium, var(--primary));
+    }
+
+    .verification-description {
+      color: var(--primary-high);
+    }
+  }
+
+  // Verified — success
+  &.status-verified {
+    border: 1px solid var(--success-low, rgba(0, 0, 0, 0.1));
+    background: var(--success-very-low, rgba(0, 0, 0, 0.02));
+
+    .verification-title {
+      color: var(--success);
+    }
+
+    .verification-description {
+      color: var(--primary-high);
+    }
+  }
+
+  // Flagged / rejected — attention needed
+  &.status-flagged,
+  &.status-rejected {
+    border: 1px solid var(--danger-low);
+    background: var(--danger-very-low, rgba(0, 0, 0, 0.02));
+
+    .verification-title {
+      color: var(--danger);
+    }
+
+    .verification-description {
+      color: var(--primary-high);
+    }
+  }
+}
+
+// ── Profile Editor ───────────────────────────────────────────────
+.matchmaking-profile-editor {
+  max-width: 700px;
+
+  .matchmaking-errors {
+    padding: 0.75em 1em;
+    margin-bottom: 1em;
+    border-radius: 6px;
+    background: var(--danger-low);
+    color: var(--danger);
+    font-size: var(--font-down-1);
+
+    p { margin: 0.25em 0; }
+  }
+
+  .profile-section {
+    margin-bottom: 1.5em;
+    padding-bottom: 1.5em;
+    border-bottom: 1px solid var(--primary-low);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .profile-section-title {
+    font-size: var(--font-up-1);
+    font-weight: 700;
+    margin-bottom: 0.75em;
+    color: var(--primary);
+  }
+
+  .profile-completion {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin-bottom: 1.5em;
+    padding: 0.75em 1em;
+    border-radius: 8px;
+    background: var(--primary-very-low);
+
+    .completion-bar {
+      flex: 1;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--primary-low);
+      overflow: hidden;
+
+      .completion-fill {
+        height: 100%;
+        border-radius: 4px;
+        background: var(--tertiary);
+        transition: width 0.3s ease;
+      }
+    }
+
+    .completion-text {
+      font-weight: 600;
+      color: var(--primary-high);
+      white-space: nowrap;
+    }
+  }
+
+  .profile-field {
+    margin-bottom: 1em;
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.25em;
+      color: var(--primary);
+    }
+
+    .field-help {
+      font-size: var(--font-down-1);
+      color: var(--primary-medium);
+      margin-bottom: 0.35em;
+    }
+
+    select,
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    textarea {
+      min-height: 80px;
+      max-width: 100%;
+      resize: vertical;
+    }
+
+    .char-count {
+      font-size: var(--font-down-1);
+      color: var(--primary-medium);
+      text-align: right;
+      margin-top: 0.2em;
+
+      &.near-limit {
+        color: var(--danger);
+      }
+    }
+  }
+
+  .profile-field-row {
+    display: flex;
+    gap: 1em;
+
+    .profile-field {
+      flex: 1;
+    }
+  }
+
+  .profile-actions {
+    display: flex;
+    gap: 0.75em;
+    align-items: center;
+    margin-top: 1.5em;
+
+    .save-status {
+      font-size: var(--font-down-1);
+      color: var(--success);
+    }
+  }
+
+  .chip-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35em 0.85em;
+      border-radius: 20px;
+      border: 1px solid var(--primary-low-mid);
+      background: var(--secondary);
+      color: var(--primary-high);
+      font-size: var(--font-down-1);
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      text-transform: capitalize;
+      user-select: none;
+
+      &:hover {
+        border-color: var(--tertiary);
+        background: var(--tertiary-very-low, rgba(0, 0, 0, 0.03));
+      }
+
+      &.selected {
+        background: var(--tertiary);
+        color: var(--secondary);
+        border-color: var(--tertiary);
+        font-weight: 600;
+      }
+
+      &.selected:hover {
+        background: var(--tertiary-hover, var(--tertiary));
+        border-color: var(--tertiary-hover, var(--tertiary));
+      }
+    }
+  }
+
+  // ── Data Management Section ──────────────────────────────────────
+  .profile-data-management {
+    margin-top: 2em;
+    padding: 1.25em;
+    border: 1px solid var(--primary-low);
+    border-radius: 8px;
+    background: var(--primary-very-low);
+
+    .data-management-title {
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 0.75em;
+    }
+
+    .data-management-actions {
+      display: flex;
+      gap: 0.75em;
+      align-items: center;
+
+      .export-status {
+        font-size: var(--font-down-1);
+        color: var(--success);
+      }
+    }
+  }
+
+  // ── Danger Zone ──────────────────────────────────────────────────
+  .profile-danger-zone {
+    margin-top: 2em;
+    padding-top: 1.5em;
+    border-top: 1px solid var(--danger-low);
+
+    .danger-title {
+      font-weight: 700;
+      color: var(--danger);
+      margin-bottom: 0.5em;
+    }
+
+    .danger-description {
+      font-size: var(--font-down-1);
+      color: var(--primary-medium);
+      margin-bottom: 0.75em;
+    }
+  }
+}

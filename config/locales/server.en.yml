@@ -1,0 +1,39 @@
+en:
+  site_settings:
+    matchmaking_enabled: "Enable the matchmaking feature for faith-based partner matching."
+    matchmaking_persona_user_id: "User ID of the AI matchmaking persona bot user."
+    matchmaking_insight_llm_model_id: "LLM model ID for generating faith profile insights (classification and summary)."
+    matchmaking_min_profile_completion: "Minimum profile completion percentage required to search for matches."
+    matchmaking_max_results_per_search: "Maximum candidates evaluated in Stage 3 LLM refinement."
+    matchmaking_results_shown_to_user: "Number of top matches presented to the user per search."
+    matchmaking_allowed_groups: "Groups whose members can access matchmaking."
+    matchmaking_consent_policy_text: "Consent policy text for matchmaking data processing (religious data under GDPR Article 9)."
+    matchmaking_denomination_weights: "JSON denomination compatibility matrix override."
+    matchmaking_scoring_weights: "JSON scoring weight configuration override."
+    matchmaking_verification_enabled: "Enable the Trust Gate verification system for new user onboarding."
+    matchmaking_verification_persona_user_id: "User ID of the Verification Companion bot user."
+    matchmaking_verification_auto_threshold: "Minimum confidence score for automatic verification (TL1 promotion without admin review)."
+    matchmaking_verification_llm_model_id: "LLM model ID for verification evaluation (falls back to insight LLM if blank)."
+  discourse_matchmaking:
+    errors:
+      consent_required: "You must accept the matchmaking data processing policy before continuing."
+      profile_not_found: "No matchmaking profile found."
+      profile_incomplete: "Your matchmaking profile is not complete enough to search. Please fill in more details."
+      not_enabled: "Matchmaking is not currently enabled."
+      not_authorized: "You do not have access to matchmaking."
+    verification:
+      user_verified_title: "Welcome to Jesus Enough — You're Verified!"
+      user_verified_message: |
+        Welcome to Jesus Enough! Your profile has been verified and you now have full access to the community.
+
+        You can:
+        - Post and reply in the forums
+        - Send messages to other members
+        - Talk to **Logos_bot** on the [AI conversations page](%{base_url}/discourse-ai/ai-bot/conversations) to start finding faith-compatible matches
+
+        We're glad you're here!
+      user_review_title: "Your Profile Is Being Reviewed"
+      user_review_message: |
+        Thanks for completing your profile interview! Your account is being reviewed by our team — you'll hear from us within 24 hours.
+
+        In the meantime, feel free to browse the community.

@@ -1,0 +1,56 @@
+plugins:
+  matchmaking_enabled:
+    default: false
+    client: true
+  matchmaking_persona_user_id:
+    default: ""
+    description: "The user ID of the AI persona used for matchmaking conversations. Set this to the persona's bot user ID."
+  matchmaking_insight_llm_model_id:
+    default: ""
+    description: "The LLM model ID used to generate faith profile insights (classification and summary). Find model IDs in Admin → AI → LLM Models."
+  matchmaking_min_profile_completion:
+    default: 70
+    min: 50
+    max: 100
+    description: "Minimum profile completion percentage required before a user can search for matches."
+  matchmaking_max_results_per_search:
+    default: 25
+    min: 5
+    max: 50
+    description: "Maximum number of candidates passed to the LLM for Stage 3 refinement."
+  matchmaking_results_shown_to_user:
+    default: 5
+    min: 3
+    max: 10
+    description: "Number of top matches the persona presents to the user per search."
+  matchmaking_allowed_groups:
+    default: "trust_level_1"
+    type: group_list
+    description: "Groups whose members can access the matchmaking feature."
+  matchmaking_consent_policy_text:
+    default: ""
+    type: text
+    description: "The consent policy text shown to users before they create a matchmaking profile. Covers GDPR Article 9 requirements for religious data processing."
+  matchmaking_denomination_weights:
+    default: ""
+    type: text
+    description: "JSON configuration for the denomination compatibility matrix. Leave blank for defaults."
+  matchmaking_scoring_weights:
+    default: ""
+    type: text
+    description: "JSON configuration for scoring dimension weights. Leave blank for defaults."
+  matchmaking_verification_enabled:
+    default: true
+    client: true
+    description: "Enable the Trust Gate verification system. New users must complete a profile interview before gaining full platform access."
+  matchmaking_verification_persona_user_id:
+    default: ""
+    description: "The user ID of the Verification Companion bot user. Set this to the persona's bot user ID."
+  matchmaking_verification_auto_threshold:
+    default: 0.70
+    min: 0.50
+    max: 1.0
+    description: "Minimum confidence score for automatic verification. Users scoring above this are auto-promoted to TL1 without admin review."
+  matchmaking_verification_llm_model_id:
+    default: ""
+    description: "The LLM model ID used for verification evaluation. Falls back to matchmaking_insight_llm_model_id if blank."
