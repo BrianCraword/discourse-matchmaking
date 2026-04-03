@@ -68,6 +68,27 @@ module Jobs
       Reflect what they actually wrote, at the depth they actually wrote it.
       If their writing is sparse, say so honestly — do not fabricate richness.
 
+      WHEN ENRICHMENT NOTES ARE PROVIDED:
+      You may receive "VERIFICATION CONVERSATION ENRICHMENT" — these are structured
+      notes from a conversation where the user elaborated on their profile in their
+      own words. These notes are organized by profile area and contain the user's
+      actual language, direct quotes, and factual observations.
+
+      These enrichment notes are HIGH-VALUE input. They contain the texture, specifics,
+      and nuance that the form fields alone cannot capture. Use them to:
+      - Produce more accurate posture classifications (the user's own words reveal
+        what they actually prioritize, not just what they checked on a form)
+      - Assign more confident strength scores (elaborated themes get higher strength)
+      - Write a richer, more specific faith_summary that reflects who this person
+        actually is — named churches, specific callings, real struggles, concrete goals
+      - Detect postures that weren't visible in form text alone (e.g., a user whose
+        form testimony is brief but who described a deep prayer life in conversation)
+
+      Treat enrichment notes with the same Mirror Principle as the form data:
+      reflect what the user actually said at the depth they actually said it.
+      Do not inflate enrichment notes into grander spiritual language than the
+      user themselves used.
+
       OUTPUT FORMAT:
       Respond with ONLY a valid JSON object. No markdown backticks, no preamble, no explanation.
       {
@@ -108,13 +129,21 @@ module Jobs
         return
       end
 
-      # Build input — optionally enriched with verification conversation transcript
+      # Build input — optionally enriched with verification conversation data
       user_message = build_user_message(profile)
 
       if args[:include_transcript] && args[:topic_id]
-        transcript = extract_user_messages(args[:topic_id], profile.user_id)
-        if transcript.present?
-          user_message += "\n\nVERIFICATION CONVERSATION TRANSCRIPT (the user elaborated on their profile in their own words — use this to produce richer, more accurate classification):\n#{transcript}"
+        # Prefer the structured enrichment summary over raw transcript
+        enrichment = extract_enrichment_summary(profile)
+
+        if enrichment.present?
+          user_message += "\n\n" + build_enrichment_block(enrichment)
+        else
+          # Fallback to raw transcript if no enrichment summary exists
+          transcript = extract_user_messages(args[:topic_id], profile.user_id)
+          if transcript.present?
+            user_message += "\n\nVERIFICATION CONVERSATION TRANSCRIPT (the user elaborated on their profile in their own words — use this to produce richer, more accurate classification):\n#{transcript}"
+          end
         end
       end
 
@@ -166,7 +195,7 @@ module Jobs
           "[discourse-matchmaking] Generated faith insight for profile #{profile.id} " \
           "(#{faith_tags['spiritual_posture']&.size || 0} postures, " \
           "maturity: #{faith_tags['faith_maturity']}" \
-          "#{args[:include_transcript] ? ', enriched with transcript' : ''})"
+          "#{args[:include_transcript] ? ', enriched with verification data' : ''})"
         )
 
       rescue JSON::ParserError => e
@@ -204,8 +233,42 @@ module Jobs
       sections.join("\n\n")
     end
 
-    # Extract only the USER's messages from the verification conversation
-    # (not the companion's questions — we want the user's actual words)
+    # Extract the structured enrichment summary from verification_data
+    # This is the preferred source — organized by profile area with the user's own words
+    def extract_enrichment_summary(profile)
+      return nil unless profile.verification_data.is_a?(Hash)
+      profile.verification_data["enrichment_summary"]
+    end
+
+    # Build a structured enrichment block from the enrichment summary hash
+    def build_enrichment_block(enrichment)
+      return "" unless enrichment.is_a?(Hash)
+
+      sections = ["VERIFICATION CONVERSATION ENRICHMENT (structured notes from a conversation where the user elaborated on their profile — organized by area, in the user's own words):"]
+
+      field_labels = {
+        "testimony_enrichment" => "FAITH JOURNEY ELABORATION",
+        "church_life_notes" => "CHURCH LIFE DETAILS",
+        "bible_engagement_notes" => "SCRIPTURE ENGAGEMENT DETAILS",
+        "theological_clarity" => "THEOLOGICAL VIEWS CLARIFICATION",
+        "life_goals_enrichment" => "LIFE GOALS ELABORATION",
+        "ministry_notes" => "MINISTRY DETAILS",
+        "relationship_context" => "RELATIONSHIP INTENTION CONTEXT",
+        "partner_enrichment" => "PARTNER DESCRIPTION ELABORATION",
+        "lifestyle_and_interests_notes" => "LIFESTYLE AND INTERESTS NOTES",
+        "notable_observations" => "OTHER OBSERVATIONS",
+      }
+
+      field_labels.each do |key, label|
+        value = enrichment[key]
+        next if value.blank?
+        sections << "#{label}:\n#{value}"
+      end
+
+      sections.join("\n\n")
+    end
+
+    # Fallback: extract only the USER's messages from the verification conversation
     def extract_user_messages(topic_id, user_id)
       topic = Topic.find_by(id: topic_id)
       return nil unless topic
