@@ -8,7 +8,7 @@ module DiscourseMatchmaking
     before_action :ensure_matchmaking_enabled
     before_action :ensure_user_in_allowed_group, except: %i[consent_status grant_consent show create update]
     before_action :ensure_consent, only: %i[show update]
-    before_action :ensure_admin, only: %i[admin_approve admin_reject]
+    before_action :ensure_admin, only: %i[admin_approve admin_reject admin_reset]
 
     # GET /matchmaking/profile
     # Returns the current user's matchmaking profile, or nil if none exists
@@ -49,8 +49,14 @@ module DiscourseMatchmaking
 
       profile = MatchmakingProfile.new(profile_data)
       if profile.save
-        # If verification is disabled, auto-promote to TL1
-        unless verification_enabled?
+        if verification_enabled?
+          # Add user to pending_verification group (grants Verification Companion access)
+          group = Group.find_by(name: MatchmakingProfile::VERIFICATION_GROUP_NAME)
+          group.add(current_user) if group
+          # Sync the admin-visible custom user field
+          profile.send(:sync_verification_admin_field, "pending_interview")
+        else
+          # No verification required — auto-promote
           profile.verify!("auto_no_verification")
         end
 
@@ -88,6 +94,11 @@ module DiscourseMatchmaking
           "[discourse-matchmaking] Data deletion: user_id=#{current_user.id} " \
           "profile_id=#{profile.id} at=#{Time.current.iso8601}"
         )
+        # Clean up group membership
+        group = Group.find_by(name: MatchmakingProfile::VERIFICATION_GROUP_NAME)
+        group.remove(current_user) if group
+        # Clear the admin custom field
+        profile.send(:sync_verification_admin_field, "deleted")
       end
 
       profile&.destroy
@@ -165,6 +176,23 @@ module DiscourseMatchmaking
       render json: {
         success: true,
         message: "User #{profile.user.username} has been rejected.",
+        verification_status: profile.verification_status,
+      }
+    end
+
+    # POST /matchmaking/admin/reset/:user_id
+    # Admin resets a user back to pending_interview for re-verification
+    def admin_reset
+      profile = MatchmakingProfile.find_by(user_id: params[:user_id])
+      unless profile
+        return render json: { error: "Profile not found." }, status: 404
+      end
+
+      profile.reset_verification!
+
+      render json: {
+        success: true,
+        message: "User #{profile.user.username} has been reset to pending interview. They can re-verify by talking to the Verification Companion.",
         verification_status: profile.verification_status,
       }
     end
