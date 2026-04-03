@@ -39,6 +39,8 @@ class MatchmakingProfile < ActiveRecord::Base
 
   # ── Verification Status ────────────────────────────────────────────
   VERIFICATION_STATUSES = %w[unverified pending_interview verified flagged rejected].freeze
+  VERIFICATION_GROUP_NAME = "pending_verification"
+  VERIFICATION_USER_FIELD_NAME = "Verification Status"
 
   # ── Validations ──────────────────────────────────────────────────────
   validates :user_id, presence: true, uniqueness: true
@@ -106,6 +108,8 @@ class MatchmakingProfile < ActiveRecord::Base
 
   def mark_pending_interview!
     update_column(:verification_status, "pending_interview")
+    sync_verification_admin_field("pending_interview")
+    add_to_verification_group
   end
 
   def verify!(verified_by_label = "auto")
@@ -118,6 +122,10 @@ class MatchmakingProfile < ActiveRecord::Base
     if user.trust_level < 1
       user.change_trust_level!(1, log_action_for: Discourse.system_user)
     end
+    # Remove from pending_verification group (hides Verification Companion)
+    remove_from_verification_group
+    # Update admin-visible custom field
+    sync_verification_admin_field("verified")
   end
 
   def flag_for_review!(assessment_data)
@@ -125,6 +133,7 @@ class MatchmakingProfile < ActiveRecord::Base
       verification_status: "flagged",
       verification_data: assessment_data,
     )
+    sync_verification_admin_field("flagged")
   end
 
   def reject!(rejected_by_label = "admin")
@@ -132,6 +141,21 @@ class MatchmakingProfile < ActiveRecord::Base
       verification_status: "rejected",
       verified_by: rejected_by_label,
     )
+    # Remove from pending_verification group
+    remove_from_verification_group
+    sync_verification_admin_field("rejected")
+  end
+
+  # Admin reset: put user back into pending_interview state for re-verification
+  def reset_verification!
+    update_columns(
+      verification_status: "pending_interview",
+      verification_data: {},
+      verified_at: nil,
+      verified_by: nil,
+    )
+    add_to_verification_group
+    sync_verification_admin_field("pending_interview")
   end
 
   # ── Profile Completion ───────────────────────────────────────────────
@@ -228,6 +252,44 @@ class MatchmakingProfile < ActiveRecord::Base
   end
 
   private
+
+  # ── Group Management ─────────────────────────────────────────────────
+  def add_to_verification_group
+    group = Group.find_by(name: VERIFICATION_GROUP_NAME)
+    group.add(user) if group && user
+  rescue => e
+    Rails.logger.warn("[discourse-matchmaking] Failed to add user #{user_id} to #{VERIFICATION_GROUP_NAME}: #{e.message}")
+  end
+
+  def remove_from_verification_group
+    group = Group.find_by(name: VERIFICATION_GROUP_NAME)
+    group.remove(user) if group && user
+  rescue => e
+    Rails.logger.warn("[discourse-matchmaking] Failed to remove user #{user_id} from #{VERIFICATION_GROUP_NAME}: #{e.message}")
+  end
+
+  # ── Custom User Field Sync ──────────────────────────────────────────
+  # Updates a staff-visible custom user field so admins can see verification
+  # status at a glance in Admin → Users → [user]
+  def sync_verification_admin_field(status)
+    return unless user
+
+    field = UserField.find_by(name: VERIFICATION_USER_FIELD_NAME)
+    return unless field
+
+    label = case status
+            when "pending_interview" then "Pending Interview"
+            when "verified" then "Verified"
+            when "flagged" then "Flagged for Review"
+            when "rejected" then "Rejected"
+            else status&.titleize || "Unknown"
+            end
+
+    user.custom_fields["user_field_#{field.id}"] = label
+    user.save_custom_fields
+  rescue => e
+    Rails.logger.warn("[discourse-matchmaking] Failed to sync verification field for user #{user_id}: #{e.message}")
+  end
 
   def narrative_fields_changed?
     saved_change_to_testimony? || saved_change_to_life_goals? ||
