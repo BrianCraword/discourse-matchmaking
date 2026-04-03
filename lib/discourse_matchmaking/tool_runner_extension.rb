@@ -21,8 +21,11 @@ module DiscourseMatchmaking
 
     VERIFICATION_JS = <<~JS
       const verification = {
-        complete: function() {
-          const result = _verification_complete();
+        complete: function(enrichmentSummary) {
+          const summaryStr = enrichmentSummary ?
+            (typeof enrichmentSummary === 'object' ? JSON.stringify(enrichmentSummary) : String(enrichmentSummary)) :
+            null;
+          const result = _verification_complete(summaryStr);
           return typeof result === 'string' ? JSON.parse(result) : result;
         }
       };
@@ -53,7 +56,7 @@ module DiscourseMatchmaking
     def attach_verification(mini_racer_context)
       mini_racer_context.attach(
         "_verification_complete",
-        ->() do
+        ->(enrichment_summary_json) do
           in_attached_function do
             user_id = @context.user&.id
             return JSON.generate({ error: "No user context" }) unless user_id
@@ -74,10 +77,8 @@ module DiscourseMatchmaking
             end
 
             # Get the topic ID from the conversation context.
-            # In Discourse AI Agents, the context carries the post/topic being discussed.
             topic_id = nil
 
-            # Try multiple access paths for the topic ID
             if @context.respond_to?(:topic_id) && @context.topic_id.present?
               topic_id = @context.topic_id
             elsif @context.respond_to?(:post) && @context.post.respond_to?(:topic_id)
@@ -105,10 +106,28 @@ module DiscourseMatchmaking
               })
             end
 
-            # Update profile status and store conversation reference
+            # Parse and store the enrichment summary if provided
+            enrichment_data = nil
+            if enrichment_summary_json.present? && enrichment_summary_json != "null"
+              begin
+                enrichment_data = JSON.parse(enrichment_summary_json)
+              rescue JSON::ParserError => e
+                Rails.logger.warn(
+                  "[discourse-matchmaking] Failed to parse enrichment summary for user #{user_id}: #{e.message}"
+                )
+                # Continue without enrichment — the conversation transcript is still available
+              end
+            end
+
+            # Build verification_data with enrichment summary included
+            verification_data = profile.verification_data || {}
+            verification_data = verification_data.merge("enrichment_summary" => enrichment_data) if enrichment_data
+
+            # Update profile status and store conversation reference + enrichment
             profile.update_columns(
               verification_status: "pending_interview",
               verification_conversation_topic_id: topic_id,
+              verification_data: verification_data,
             )
 
             # Enqueue the evaluator background job
