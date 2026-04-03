@@ -50,10 +50,8 @@ module DiscourseMatchmaking
       profile = MatchmakingProfile.new(profile_data)
       if profile.save
         if verification_enabled?
-          # Add user to pending_verification group (grants Verification Companion access)
-          group = Group.find_by(name: MatchmakingProfile::VERIFICATION_GROUP_NAME)
-          group.add(current_user) if group
-          # Sync the admin-visible custom user field
+          # User is already in pending_verification group (added at registration via plugin.rb hook).
+          # Sync the admin-visible custom user field.
           profile.send(:sync_verification_admin_field, "pending_interview")
         else
           # No verification required — auto-promote
