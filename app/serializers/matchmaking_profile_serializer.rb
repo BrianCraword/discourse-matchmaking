@@ -40,6 +40,7 @@ class MatchmakingProfileSerializer < ApplicationSerializer
              :last_search_at,
              # Verification
              :verification_status,
+             :verification_conversation_topic_id,
              # Computed
              :completion_percentage,
              :meets_minimum_completion
