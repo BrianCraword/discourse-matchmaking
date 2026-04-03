@@ -29,6 +29,7 @@ export default class UserMatchmakingProfile extends Component {
 
   // Trust Gate: Verification status
   @tracked verificationStatus = null;
+  @tracked verificationConversationTopicId = null;
 
   @tracked gender = "";
   @tracked seekingGender = "";
@@ -105,6 +106,9 @@ export default class UserMatchmakingProfile extends Component {
   }
 
   get aiConversationsUrl() {
+    if (this.verificationConversationTopicId) {
+      return `/discourse-ai/ai-bot/conversations/${this.verificationConversationTopicId}`;
+    }
     return "/discourse-ai/ai-bot/conversations";
   }
 
@@ -182,6 +186,7 @@ export default class UserMatchmakingProfile extends Component {
     this.selectedDealbreakers = p.dealbreakers || [];
     // Trust Gate: track verification status
     this.verificationStatus = p.verification_status || null;
+    this.verificationConversationTopicId = p.verification_conversation_topic_id || null;
   }
 
   _payload() {
