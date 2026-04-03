@@ -6,9 +6,10 @@ module Jobs
 
     EVALUATOR_PROMPT = <<~PROMPT
       You are a verification evaluator for Jesus Enough, a Christian community platform.
-      You will receive a user's matchmaking profile (form data they submitted) and the
-      transcript of a conversation where a companion persona asked them to elaborate on
-      what they wrote. Your job is to assess whether this person's profile appears to
+      You will receive a user's matchmaking profile (form data they submitted), a
+      conversation transcript where a companion persona asked them to elaborate on
+      what they wrote, and optionally a structured enrichment summary produced by
+      the companion. Your job is to assess whether this person's profile appears to
       represent a genuine, lived faith experience.
 
       You are NOT judging the quality of their faith, the sophistication of their theology,
@@ -39,6 +40,10 @@ module Jobs
       - 0.4: Selections don't match descriptions — may not understand what they selected
       - 0.1: Selections clearly contradict their conversational descriptions
 
+      Note: If the companion's enrichment summary notes that the user didn't understand
+      a theological term and the companion helped them clarify, that is a POSITIVE signal
+      (honest confusion), not a negative one.
+
       4. ENGAGEMENT_QUALITY (0.0–1.0)
       Did they engage substantively with the conversation?
       - 0.9-1.0: Fully engaged, offered details without being prompted, asked questions
@@ -46,7 +51,14 @@ module Jobs
       - 0.3-0.5: Minimal engagement, short answers, seemed uninterested or rushed
       - 0.0-0.2: Disengaged, refused to answer, tried to skip the conversation
 
-      5. LANGUAGE_CONSISTENCY (flag)
+      5. PROFILE_COVERAGE (0.0-1.0)
+      How thoroughly did the conversation cover the profile fields?
+      - 0.9-1.0: All major profile areas were discussed (faith, theology, life goals, partner, practical)
+      - 0.6-0.8: Most areas covered, a few skipped or lightly touched
+      - 0.3-0.5: Only some areas covered, significant gaps
+      - 0.0-0.2: Very little of the profile was actually discussed
+
+      6. LANGUAGE_CONSISTENCY (flag)
       Does the linguistic register of the conversation match the profile text?
       This is NOT about English proficiency. A non-native speaker who writes their profile
       in non-native English and converses in the same non-native English is CONSISTENT.
@@ -55,7 +67,7 @@ module Jobs
       Set to true ONLY if there is a clear mismatch between profile writing style and
       conversational writing style that suggests different authors.
 
-      6. AI_GENERATION_INDICATORS (flag)
+      7. AI_GENERATION_INDICATORS (flag)
       Are the conversational responses suspiciously polished, uniform in register,
       or lacking natural typing patterns? Do they sound scripted or generated?
       Set to true ONLY if there are strong indicators. Some people are naturally
@@ -74,6 +86,9 @@ module Jobs
         Christocentric sanctification" without any concrete details.
       - Someone who says "I don't really know what cessationist means, I just
         picked something" is being HONEST, not suspicious.
+      - A user who needed help understanding theological terms but engaged genuinely
+        with the explanations should score WELL on theological_consistency — honest
+        confusion corrected in real-time is a strong authenticity signal.
 
       OUTPUT FORMAT:
       Respond with ONLY a valid JSON object. No markdown, no preamble, no explanation.
@@ -82,6 +97,7 @@ module Jobs
         "depth": 0.0,
         "theological_consistency": 0.0,
         "engagement_quality": 0.0,
+        "profile_coverage": 0.0,
         "language_consistency_flag": false,
         "ai_generation_flag": false,
         "confidence_score": 0.0,
@@ -90,7 +106,7 @@ module Jobs
       }
 
       For confidence_score, compute:
-        base = coherence * 0.30 + depth * 0.25 + theological_consistency * 0.20 + engagement_quality * 0.25
+        base = coherence * 0.25 + depth * 0.20 + theological_consistency * 0.20 + engagement_quality * 0.20 + profile_coverage * 0.15
         if language_consistency_flag: base -= 0.15
         if ai_generation_flag: base -= 0.10
         confidence_score = max(0.0, min(1.0, base))
@@ -98,11 +114,16 @@ module Jobs
       For flags, include any applicable strings from:
         "language_mismatch", "ai_generated_responses", "rushed_completion",
         "major_contradictions", "no_church_details", "deflects_followups",
-        "profile_form_mismatch", "generic_responses", "off_platform_redirect"
+        "profile_form_mismatch", "generic_responses", "off_platform_redirect",
+        "incomplete_coverage", "theological_term_confusion_resolved"
 
       Include "off_platform_redirect" if the user attempts to move the conversation
       off the platform, asks for contact information, or suggests meeting elsewhere
       during the verification interview.
+
+      Include "theological_term_confusion_resolved" (this is a POSITIVE flag, not negative)
+      if the user didn't understand a theological term, the companion explained it,
+      and the user adjusted their understanding. This indicates genuine engagement.
     PROMPT
 
     def execute(args)
@@ -157,6 +178,7 @@ module Jobs
           depth: result["depth"]&.to_f,
           theological_consistency: result["theological_consistency"]&.to_f,
           engagement_quality: result["engagement_quality"]&.to_f,
+          profile_coverage: result["profile_coverage"]&.to_f,
           language_consistency_flag: result["language_consistency_flag"] == true,
           ai_generation_flag: result["ai_generation_flag"] == true,
           flags: Array(result["flags"]),
@@ -164,6 +186,12 @@ module Jobs
           assessed_at: Time.current.iso8601,
           topic_id: topic_id,
         }
+
+        # Preserve the enrichment_summary if it was stored by the tool
+        existing_data = profile.verification_data || {}
+        if existing_data["enrichment_summary"].present?
+          assessment_data[:enrichment_summary] = existing_data["enrichment_summary"]
+        end
 
         # Store the assessment
         profile.update_columns(
@@ -192,7 +220,7 @@ module Jobs
           )
         end
 
-        # Re-run faith insight generation with enriched transcript
+        # Re-run faith insight generation with enriched data
         Jobs.enqueue(:generate_profile_insight,
           profile_id: profile.id,
           include_transcript: true,
@@ -238,6 +266,8 @@ module Jobs
       sections << "Baptism status: #{profile.baptism_status}" if profile.baptism_status.present?
       sections << "Relationship intention: #{profile.relationship_intention}" if profile.relationship_intention.present?
       sections << "Children preference: #{profile.children_preference}" if profile.children_preference.present?
+      sections << "Location: #{[profile.city, profile.state, profile.country].compact.join(', ')}"
+      sections << "Location flexibility: #{profile.location_flexibility}" if profile.location_flexibility.present?
 
       tv = profile.theological_views || {}
       if tv.any?
@@ -249,6 +279,19 @@ module Jobs
       sections << "Ministry involvement: #{profile.ministry_involvement}" if profile.ministry_involvement.present?
       sections << "Partner description: #{profile.partner_description}" if profile.partner_description.present?
       sections << "Interests: #{(profile.interests || []).join(', ')}" if profile.interests.present?
+      sections << "Lifestyle: #{(profile.lifestyle || []).join(', ')}" if profile.lifestyle.present?
+      sections << "Dealbreakers: #{(profile.dealbreakers || []).join(', ')}" if profile.dealbreakers.present?
+
+      # Include the enrichment summary if available
+      enrichment = profile.verification_data&.dig("enrichment_summary")
+      if enrichment.is_a?(Hash) && enrichment.any?
+        sections << "\n=== COMPANION'S ENRICHMENT SUMMARY (structured notes from the interview) ==="
+        enrichment.each do |key, value|
+          next if value.blank?
+          label = key.to_s.gsub("_", " ").capitalize
+          sections << "#{label}: #{value}"
+        end
+      end
 
       sections << "\n=== CONVERSATION TRANSCRIPT ==="
       sections << transcript
@@ -263,7 +306,7 @@ module Jobs
         You can:
         - Post and reply in the forums
         - Send messages to other members
-        - Talk to **Logos_bot** on the [AI conversations page](#{Discourse.base_url}/discourse-ai/ai-bot/conversations) to start finding faith-compatible matches
+        - Talk to **Logos** on the [AI conversations page](#{Discourse.base_url}/discourse-ai/ai-bot/conversations) to start finding faith-compatible matches
 
         We're glad you're here!
       MSG
@@ -322,6 +365,7 @@ module Jobs
         - Depth: #{assessment_data[:depth]&.round(3)}
         - Theological consistency: #{assessment_data[:theological_consistency]&.round(3)}
         - Engagement quality: #{assessment_data[:engagement_quality]&.round(3)}
+        - Profile coverage: #{assessment_data[:profile_coverage]&.round(3)}
         - Language mismatch flag: #{assessment_data[:language_consistency_flag]}
         - AI generation flag: #{assessment_data[:ai_generation_flag]}
 
