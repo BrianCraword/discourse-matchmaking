@@ -2,7 +2,7 @@
 
 # name: discourse-matchmaking
 # about: Christian matchmaking powered by Discourse AI — faith-based compatibility matching with AI-guided conversations
-# version: 0.3.0
+# version: 0.3.1
 # authors: Brian Crawford
 # url: https://github.com/BrianCrawford/discourse-matchmaking
 # required_version: 2.7.0
@@ -39,6 +39,22 @@ after_initialize do
   end
 
   require_relative "lib/discourse_matchmaking/scoring"
+
+  # Add new users to pending_verification group at registration
+  # so they can access the Verification Companion before creating a profile
+  on(:user_created) do |user|
+    if SiteSetting.matchmaking_enabled &&
+       SiteSetting.respond_to?(:matchmaking_verification_enabled) &&
+       SiteSetting.matchmaking_verification_enabled
+      group = Group.find_by(name: MatchmakingProfile::VERIFICATION_GROUP_NAME)
+      if group
+        group.add(user)
+        Rails.logger.info("[discourse-matchmaking] Added new user #{user.username} (id: #{user.id}) to #{MatchmakingProfile::VERIFICATION_GROUP_NAME}")
+      end
+    end
+  rescue => e
+    Rails.logger.warn("[discourse-matchmaking] Failed to add new user to pending_verification: #{e.message}")
+  end
 
   if defined?(DiscourseAi::Agents::ToolRunner)
     require_relative "lib/discourse_matchmaking/tool_runner_extension"
