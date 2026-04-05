@@ -6,10 +6,9 @@ module Jobs
 
     EVALUATOR_PROMPT = <<~PROMPT
       You are a verification evaluator for Jesus Enough, a Christian community platform.
-      You will receive a user's matchmaking profile (form data they submitted), a
-      conversation transcript where a companion persona asked them to elaborate on
-      what they wrote, and optionally a structured enrichment summary produced by
-      the companion. Your job is to assess whether this person's profile appears to
+      You will receive a user's matchmaking profile (form data they submitted) and the
+      transcript of a conversation where a companion persona asked them to elaborate on
+      what they wrote. Your job is to assess whether this person's profile appears to
       represent a genuine, lived faith experience.
 
       You are NOT judging the quality of their faith, the sophistication of their theology,
@@ -40,10 +39,6 @@ module Jobs
       - 0.4: Selections don't match descriptions — may not understand what they selected
       - 0.1: Selections clearly contradict their conversational descriptions
 
-      Note: If the companion's enrichment summary notes that the user didn't understand
-      a theological term and the companion helped them clarify, that is a POSITIVE signal
-      (honest confusion), not a negative one.
-
       4. ENGAGEMENT_QUALITY (0.0–1.0)
       Did they engage substantively with the conversation?
       - 0.9-1.0: Fully engaged, offered details without being prompted, asked questions
@@ -51,29 +46,25 @@ module Jobs
       - 0.3-0.5: Minimal engagement, short answers, seemed uninterested or rushed
       - 0.0-0.2: Disengaged, refused to answer, tried to skip the conversation
 
-      5. PROFILE_COVERAGE (0.0-1.0)
-      How thoroughly did the conversation cover the profile fields?
-      - 0.9-1.0: All major profile areas were discussed (faith, theology, life goals, partner, practical)
-      - 0.6-0.8: Most areas covered, a few skipped or lightly touched
-      - 0.3-0.5: Only some areas covered, significant gaps
-      - 0.0-0.2: Very little of the profile was actually discussed
+      5. INTERVIEW_COMPLETENESS (0.0-1.0)
+      Did the interview cover sufficient ground?
+      - 0.9-1.0: Multiple profile areas explored (faith story, beliefs, life direction, partnership)
+      - 0.6-0.8: Most key areas covered, minor gaps
+      - 0.3-0.5: Only 1-2 areas covered, significant gaps
+      - 0.0-0.2: Interview was cut short or barely started
 
       6. LANGUAGE_CONSISTENCY (flag)
       Does the linguistic register of the conversation match the profile text?
-      This is NOT about English proficiency. A non-native speaker who writes their profile
-      in non-native English and converses in the same non-native English is CONSISTENT.
-      A profile written in fluent American English paired with conversation that uses
-      fundamentally different grammar, idioms, or vocabulary level is a flag.
-      Set to true ONLY if there is a clear mismatch between profile writing style and
-      conversational writing style that suggests different authors.
+      This is NOT about English proficiency. A non-native speaker who writes and converses
+      in the same non-native English is CONSISTENT. A profile in fluent American English
+      paired with fundamentally different grammar/vocabulary is a flag.
+      Set to true ONLY if there is a clear mismatch suggesting different authors.
 
       7. AI_GENERATION_INDICATORS (flag)
       Are the conversational responses suspiciously polished, uniform in register,
-      or lacking natural typing patterns? Do they sound scripted or generated?
-      Set to true ONLY if there are strong indicators. Some people are naturally
-      articulate — being well-spoken is not a flag. Uniformly perfect grammar,
-      suspiciously comprehensive answers to every question, and lack of any
-      hesitation or natural imprecision ARE flags.
+      or lacking natural typing patterns? Uniformly perfect grammar, suspiciously
+      comprehensive answers, and lack of any natural imprecision ARE flags.
+      Being articulate is NOT a flag.
 
       IMPORTANT CALIBRATION NOTES:
       - Err toward APPROVAL. Genuine believers who are nervous, inarticulate, or
@@ -86,9 +77,10 @@ module Jobs
         Christocentric sanctification" without any concrete details.
       - Someone who says "I don't really know what cessationist means, I just
         picked something" is being HONEST, not suspicious.
-      - A user who needed help understanding theological terms but engaged genuinely
-        with the explanations should score WELL on theological_consistency — honest
-        confusion corrected in real-time is a strong authenticity signal.
+      - If the interview is incomplete (few exchanges, limited coverage), score
+        interview_completeness low but do NOT penalize the user's other scores
+        for what the companion failed to ask. The user can only answer questions
+        they were asked.
 
       OUTPUT FORMAT:
       Respond with ONLY a valid JSON object. No markdown, no preamble, no explanation.
@@ -97,33 +89,52 @@ module Jobs
         "depth": 0.0,
         "theological_consistency": 0.0,
         "engagement_quality": 0.0,
-        "profile_coverage": 0.0,
+        "interview_completeness": 0.0,
         "language_consistency_flag": false,
         "ai_generation_flag": false,
         "confidence_score": 0.0,
         "flags": [],
+        "recommendation": "approve|review|reset|reject",
+        "recommendation_reason": "1-2 sentence plain-language explanation of why this recommendation was made. Written for an admin who needs to make a quick decision.",
+        "key_concerns": ["List of specific concerns, if any. Each should be a concrete observation, not a score label."],
         "summary": "2-3 sentence assessment summary for admin review."
       }
 
       For confidence_score, compute:
-        base = coherence * 0.25 + depth * 0.20 + theological_consistency * 0.20 + engagement_quality * 0.20 + profile_coverage * 0.15
+        base = coherence * 0.25 + depth * 0.20 + theological_consistency * 0.15 + engagement_quality * 0.20 + interview_completeness * 0.20
         if language_consistency_flag: base -= 0.15
         if ai_generation_flag: base -= 0.10
         confidence_score = max(0.0, min(1.0, base))
 
+      For recommendation:
+        - "approve": confidence >= 0.70 and no critical flags
+        - "reset": interview_completeness < 0.50 (interview was too short — user needs a new interview, not rejection)
+        - "review": confidence 0.40-0.69, or mixed signals that need human judgment
+        - "reject": confidence < 0.40 with clear deception indicators (major_contradictions, off_platform_redirect)
+
+      IMPORTANT: If the interview was cut short (interview_completeness < 0.50), ALWAYS recommend
+      "reset" rather than "reject". An incomplete interview is not the user's fault — the
+      companion ended too early. The user deserves a full interview before any negative action.
+
+      For recommendation_reason, write as if briefing a busy admin:
+        GOOD: "Profile testimony says 'Born and Baptized' with no details. Interview covered only one exchange before being cut short. User mentioned Irish Catholic upbringing with sacraments but conversation ended before beliefs, values, or partnership could be explored. Recommend reset for a complete interview."
+        BAD: "Low scores across multiple dimensions."
+
+      For key_concerns, list specific observations:
+        GOOD: ["Testimony is one sentence with no personal narrative", "Interview ended after 1 exchange — most profile areas unexplored", "Partner description mentions no faith-related qualities"]
+        BAD: ["Low depth score", "Generic responses"]
+
       For flags, include any applicable strings from:
         "language_mismatch", "ai_generated_responses", "rushed_completion",
-        "major_contradictions", "no_church_details", "deflects_followups",
-        "profile_form_mismatch", "generic_responses", "off_platform_redirect",
-        "incomplete_coverage", "theological_term_confusion_resolved"
+        "incomplete_interview", "major_contradictions", "no_church_details",
+        "deflects_followups", "profile_form_mismatch", "generic_responses",
+        "off_platform_redirect", "no_faith_language_in_partner_description",
+        "faith_as_cultural_identity_only"
 
-      Include "off_platform_redirect" if the user attempts to move the conversation
-      off the platform, asks for contact information, or suggests meeting elsewhere
-      during the verification interview.
-
-      Include "theological_term_confusion_resolved" (this is a POSITIVE flag, not negative)
-      if the user didn't understand a theological term, the companion explained it,
-      and the user adjusted their understanding. This indicates genuine engagement.
+      Include "incomplete_interview" if fewer than 4 substantive exchanges occurred.
+      Include "faith_as_cultural_identity_only" if the user describes faith purely as
+      cultural heritage (born into it, family tradition) with no personal conviction,
+      relationship with God, or spiritual practice beyond attendance.
     PROMPT
 
     def execute(args)
@@ -178,20 +189,26 @@ module Jobs
           depth: result["depth"]&.to_f,
           theological_consistency: result["theological_consistency"]&.to_f,
           engagement_quality: result["engagement_quality"]&.to_f,
-          profile_coverage: result["profile_coverage"]&.to_f,
+          interview_completeness: result["interview_completeness"]&.to_f,
           language_consistency_flag: result["language_consistency_flag"] == true,
           ai_generation_flag: result["ai_generation_flag"] == true,
           flags: Array(result["flags"]),
+          recommendation: result["recommendation"].to_s,
+          recommendation_reason: result["recommendation_reason"].to_s.truncate(500),
+          key_concerns: Array(result["key_concerns"]),
           summary: result["summary"].to_s.truncate(1000),
           assessed_at: Time.current.iso8601,
           topic_id: topic_id,
+          # Store profile excerpts for admin review without needing DB lookup
+          profile_excerpts: {
+            testimony: profile.testimony.to_s.truncate(300),
+            life_goals: profile.life_goals.to_s.truncate(300),
+            partner_description: profile.partner_description.to_s.truncate(300),
+            ministry_involvement: profile.ministry_involvement.to_s.truncate(300),
+            denomination: profile.denomination,
+            church_attendance: profile.church_attendance,
+          },
         }
-
-        # Preserve the enrichment_summary if it was stored by the tool
-        existing_data = profile.verification_data || {}
-        if existing_data["enrichment_summary"].present?
-          assessment_data[:enrichment_summary] = existing_data["enrichment_summary"]
-        end
 
         # Store the assessment
         profile.update_columns(
@@ -203,7 +220,7 @@ module Jobs
         threshold = SiteSetting.respond_to?(:matchmaking_verification_auto_threshold) ?
           SiteSetting.matchmaking_verification_auto_threshold.to_f : 0.70
 
-        if confidence >= threshold
+        if confidence >= threshold && result["recommendation"] != "reset"
           profile.verify!("auto")
           notify_user_verified(profile)
           Rails.logger.info(
@@ -216,11 +233,12 @@ module Jobs
           notify_user_under_review(profile)
           Rails.logger.info(
             "[discourse-matchmaking] Flagged profile #{profile.id} for review " \
-            "(confidence: #{confidence.round(3)}, flags: #{assessment_data[:flags].join(', ')})"
+            "(confidence: #{confidence.round(3)}, recommendation: #{result['recommendation']}, " \
+            "flags: #{assessment_data[:flags].join(', ')})"
           )
         end
 
-        # Re-run faith insight generation with enriched data
+        # Re-run faith insight generation with enriched transcript
         Jobs.enqueue(:generate_profile_insight,
           profile_id: profile.id,
           include_transcript: true,
@@ -266,8 +284,6 @@ module Jobs
       sections << "Baptism status: #{profile.baptism_status}" if profile.baptism_status.present?
       sections << "Relationship intention: #{profile.relationship_intention}" if profile.relationship_intention.present?
       sections << "Children preference: #{profile.children_preference}" if profile.children_preference.present?
-      sections << "Location: #{[profile.city, profile.state, profile.country].compact.join(', ')}"
-      sections << "Location flexibility: #{profile.location_flexibility}" if profile.location_flexibility.present?
 
       tv = profile.theological_views || {}
       if tv.any?
@@ -279,19 +295,6 @@ module Jobs
       sections << "Ministry involvement: #{profile.ministry_involvement}" if profile.ministry_involvement.present?
       sections << "Partner description: #{profile.partner_description}" if profile.partner_description.present?
       sections << "Interests: #{(profile.interests || []).join(', ')}" if profile.interests.present?
-      sections << "Lifestyle: #{(profile.lifestyle || []).join(', ')}" if profile.lifestyle.present?
-      sections << "Dealbreakers: #{(profile.dealbreakers || []).join(', ')}" if profile.dealbreakers.present?
-
-      # Include the enrichment summary if available
-      enrichment = profile.verification_data&.dig("enrichment_summary")
-      if enrichment.is_a?(Hash) && enrichment.any?
-        sections << "\n=== COMPANION'S ENRICHMENT SUMMARY (structured notes from the interview) ==="
-        enrichment.each do |key, value|
-          next if value.blank?
-          label = key.to_s.gsub("_", " ").capitalize
-          sections << "#{label}: #{value}"
-        end
-      end
 
       sections << "\n=== CONVERSATION TRANSCRIPT ==="
       sections << transcript
@@ -306,7 +309,7 @@ module Jobs
         You can:
         - Post and reply in the forums
         - Send messages to other members
-        - Talk to **Logos** on the [AI conversations page](#{Discourse.base_url}/discourse-ai/ai-bot/conversations) to start finding faith-compatible matches
+        - Talk to **Logos_bot** on the [AI conversations page](#{Discourse.base_url}/discourse-ai/ai-bot/conversations) to start finding faith-compatible matches
 
         We're glad you're here!
       MSG
@@ -347,34 +350,89 @@ module Jobs
       return if admin_users.empty?
 
       confidence = assessment_data[:confidence_score]&.round(3)
+      recommendation = assessment_data[:recommendation] || "review"
+      recommendation_reason = assessment_data[:recommendation_reason] || "No reason provided."
       flags = assessment_data[:flags]&.join(", ") || "none"
       summary = assessment_data[:summary] || "No summary available."
+      key_concerns = assessment_data[:key_concerns] || []
       topic_url = "#{Discourse.base_url}/t/#{assessment_data[:topic_id]}" if assessment_data[:topic_id]
+      excerpts = assessment_data[:profile_excerpts] || {}
+
+      # Determine the recommended action label and explanation
+      action_label = case recommendation
+                     when "approve" then "APPROVE — Evaluator thinks this user should pass"
+                     when "reset" then "RESET — Interview was incomplete, user deserves a full interview"
+                     when "reject" then "REJECT — Evaluator found clear deception indicators"
+                     else "REVIEW — Mixed signals, needs human judgment"
+                     end
+
+      concerns_text = if key_concerns.any?
+        key_concerns.map { |c| "- #{c}" }.join("\n")
+      else
+        "- None identified"
+      end
 
       body = <<~MSG
-        A new user's verification interview has been flagged for review.
+        ## Verification Review Required
 
         **User**: #{profile.user.username} (#{profile.user.name || "no display name"})
-        **Confidence Score**: #{confidence}
+        **Confidence**: #{confidence} / 1.0
+        **Recommendation**: #{action_label}
+
+        ---
+
+        ### Why This Was Flagged
+
+        #{recommendation_reason}
+
+        ### Key Concerns
+
+        #{concerns_text}
+
+        ---
+
+        ### What the User Wrote (Profile Excerpts)
+
+        **Testimony**: #{excerpts[:testimony].presence || "(empty)"}
+
+        **Life Goals**: #{excerpts[:life_goals].presence || "(empty)"}
+
+        **Partner Description**: #{excerpts[:partner_description].presence || "(empty)"}
+
+        **Ministry**: #{excerpts[:ministry_involvement].presence || "(empty)"}
+
+        **Denomination**: #{excerpts[:denomination] || "not set"} | **Attendance**: #{excerpts[:church_attendance] || "not set"}
+
+        ---
+
+        ### Evaluator Assessment
+
+        #{summary}
+
+        **Scores**: Coherence #{assessment_data[:coherence]&.round(2)} · Depth #{assessment_data[:depth]&.round(2)} · Theology #{assessment_data[:theological_consistency]&.round(2)} · Engagement #{assessment_data[:engagement_quality]&.round(2)} · Interview completeness #{assessment_data[:interview_completeness]&.round(2)}
+
         **Flags**: #{flags}
 
-        **Evaluator Summary**: #{summary}
+        ---
 
-        **Scores**:
-        - Coherence: #{assessment_data[:coherence]&.round(3)}
-        - Depth: #{assessment_data[:depth]&.round(3)}
-        - Theological consistency: #{assessment_data[:theological_consistency]&.round(3)}
-        - Engagement quality: #{assessment_data[:engagement_quality]&.round(3)}
-        - Profile coverage: #{assessment_data[:profile_coverage]&.round(3)}
-        - Language mismatch flag: #{assessment_data[:language_consistency_flag]}
-        - AI generation flag: #{assessment_data[:ai_generation_flag]}
+        ### Conversation Transcript
 
-        **Conversation transcript**: #{topic_url || "Topic ID not available"}
+        #{topic_url || "Topic ID not available"} — Read the full conversation before deciding.
 
-        **To approve**: Run in Rails console:
+        ---
+
+        ### Actions
+
+        **To approve** (verify and promote to TL1):
         ```
         p = MatchmakingProfile.find_by(user_id: #{profile.user_id})
         p.verify!("admin")
+        ```
+
+        **To reset** (send back for a new interview):
+        ```
+        p = MatchmakingProfile.find_by(user_id: #{profile.user_id})
+        p.reset_verification!
         ```
 
         **To reject**:
@@ -389,7 +447,7 @@ module Jobs
         begin
           PostCreator.new(
             Discourse.system_user,
-            title: "[Verification Review] #{profile.user.username} — confidence #{confidence}",
+            title: "[Verification] #{profile.user.username} — #{recommendation.upcase} recommended (#{confidence})",
             raw: body,
             archetype: Archetype.private_message,
             target_usernames: admin.username,
