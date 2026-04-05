@@ -8,7 +8,7 @@ module DiscourseMatchmaking
     before_action :ensure_matchmaking_enabled
     before_action :ensure_user_in_allowed_group, except: %i[consent_status grant_consent show create update]
     before_action :ensure_consent, only: %i[show update]
-    before_action :ensure_admin, only: %i[admin_approve admin_reject admin_reset]
+    before_action :ensure_admin, only: %i[admin_approve admin_reject admin_reset admin_block admin_queue admin_profile_detail]
 
     # GET /matchmaking/profile
     # Returns the current user's matchmaking profile, or nil if none exists
@@ -195,6 +195,66 @@ module DiscourseMatchmaking
       }
     end
 
+    # POST /matchmaking/admin/block/:user_id
+    # Admin rejects AND blocks the user's IP
+    def admin_block
+      profile = MatchmakingProfile.find_by(user_id: params[:user_id])
+      return render json: { error: "Profile not found." }, status: 404 unless profile
+
+      profile.reject!(current_user.username)
+
+      ip = profile.user.ip_address || profile.user.registration_ip_address
+      ip_blocked = false
+      if ip.present?
+        ScreenedIpAddress.create(
+          ip_address: ip,
+          action_type: ScreenedIpAddress.actions[:block],
+        )
+        ip_blocked = true
+      end
+
+      render json: {
+        success: true,
+        message: "User #{profile.user.username} rejected#{ip_blocked ? ' and IP blocked' : ''}.",
+        verification_status: profile.verification_status,
+        ip_blocked: ip_blocked,
+      }
+    end
+
+    # GET /matchmaking/admin/queue
+    # Returns all profiles grouped by verification status for the admin panel
+    def admin_queue
+      flagged = MatchmakingProfile.where(verification_status: "flagged")
+        .includes(:user).order("matchmaking_profiles.updated_at DESC")
+      pending = MatchmakingProfile.where(verification_status: "pending_interview")
+        .includes(:user).order("matchmaking_profiles.created_at DESC")
+      verified = MatchmakingProfile.where(verification_status: "verified")
+        .includes(:user).order("matchmaking_profiles.verified_at DESC NULLS LAST").limit(20)
+      rejected = MatchmakingProfile.where(verification_status: "rejected")
+        .includes(:user).order("matchmaking_profiles.updated_at DESC")
+
+      render json: {
+        flagged: flagged.map { |p| admin_profile_hash(p) },
+        pending: pending.map { |p| admin_profile_hash(p) },
+        verified: verified.map { |p| admin_profile_hash(p) },
+        rejected: rejected.map { |p| admin_profile_hash(p) },
+      }
+    end
+
+    # GET /matchmaking/admin/profile/:user_id
+    # Returns detailed profile + verification data for admin review
+    def admin_profile_detail
+      profile = MatchmakingProfile.find_by(user_id: params[:user_id])
+      return render json: { error: "Profile not found." }, status: 404 unless profile
+
+      render json: {
+        profile: admin_profile_hash(profile),
+        verification_data: profile.verification_data,
+        transcript_url: profile.verification_conversation_topic_id ?
+          "#{Discourse.base_url}/t/#{profile.verification_conversation_topic_id}" : nil,
+      }
+    end
+
     private
 
     def ensure_matchmaking_enabled
@@ -240,6 +300,45 @@ module DiscourseMatchmaking
         llm_processing: MatchmakingConsent.has_active_consent?(user_id, "llm_processing"),
         needs_reconsent: MatchmakingConsent.needs_reconsent?(user_id),
         policy_version: MatchmakingConsent::CURRENT_POLICY_VERSION,
+      }
+    end
+
+    def admin_profile_hash(profile)
+      {
+        user_id: profile.user_id,
+        username: profile.user&.username,
+        name: profile.user&.name,
+        avatar_url: profile.user&.avatar_template&.gsub("{size}", "45"),
+        registered_at: profile.user&.created_at&.iso8601,
+        trust_level: profile.user&.trust_level,
+        verification_status: profile.verification_status,
+        verified_at: profile.verified_at&.iso8601,
+        verified_by: profile.verified_by,
+        confidence_score: profile.verification_data&.dig("confidence_score"),
+        recommendation: profile.verification_data&.dig("recommendation"),
+        recommendation_reason: profile.verification_data&.dig("recommendation_reason"),
+        key_concerns: profile.verification_data&.dig("key_concerns") || [],
+        flags: profile.verification_data&.dig("flags") || [],
+        summary: profile.verification_data&.dig("summary"),
+        scores: {
+          coherence: profile.verification_data&.dig("coherence"),
+          depth: profile.verification_data&.dig("depth"),
+          theological_consistency: profile.verification_data&.dig("theological_consistency"),
+          engagement_quality: profile.verification_data&.dig("engagement_quality"),
+          interview_completeness: profile.verification_data&.dig("interview_completeness"),
+        },
+        profile_excerpts: {
+          testimony: profile.testimony.to_s.truncate(300),
+          life_goals: profile.life_goals.to_s.truncate(300),
+          partner_description: profile.partner_description.to_s.truncate(300),
+          ministry_involvement: profile.ministry_involvement.to_s.truncate(300),
+          denomination: profile.denomination,
+          church_attendance: profile.church_attendance,
+        },
+        completion_percentage: profile.completion_percentage,
+        has_conversation: profile.verification_conversation_topic_id.present?,
+        conversation_topic_id: profile.verification_conversation_topic_id,
+        created_at: profile.created_at&.iso8601,
       }
     end
 
