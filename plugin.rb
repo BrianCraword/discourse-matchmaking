@@ -2,7 +2,7 @@
 
 # name: discourse-matchmaking
 # about: Christian matchmaking powered by Discourse AI — faith-based compatibility matching with AI-guided conversations
-# version: 0.3.1
+# version: 0.4.0
 # authors: Brian Crawford
 # url: https://github.com/BrianCrawford/discourse-matchmaking
 # required_version: 2.7.0
@@ -10,6 +10,16 @@
 enabled_site_setting :matchmaking_enabled
 
 register_asset "stylesheets/matchmaking.scss"
+
+# Register admin page for Verification Queue
+add_admin_route "matchmaking.admin.title", "matchmaking"
+
+Discourse::Application.routes.append do
+  get "/admin/plugins/matchmaking" => "admin/plugins#index",
+      constraints: StaffConstraint.new
+  get "/admin/plugins/matchmaking/verification-queue" => "admin/plugins#index",
+      constraints: StaffConstraint.new
+end
 
 module ::DiscourseMatchmaking
   PLUGIN_NAME = "discourse-matchmaking"
