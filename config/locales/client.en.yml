@@ -1,5 +1,15 @@
 en:
   js:
+    matchmaking:
+      admin:
+        title: "Matchmaking"
+        refresh: "Refresh"
+        approve_title: "Approve — verify user and promote to TL1"
+        reset_title: "Reset — send back for new interview"
+        reject_title: "Reject — deny access"
+        block_title: "Block — reject and block IP"
+        yes: "Yes"
+        no: "Cancel"
     discourse_matchmaking:
       title: "Matchmaking Profile"
       feature:
