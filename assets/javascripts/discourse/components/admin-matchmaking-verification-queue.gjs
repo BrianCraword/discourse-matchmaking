@@ -19,8 +19,10 @@ function formatScore(score) {
 }
 
 function enrichProfile(p) {
-  const recLabels = { approve: "Approve", reset: "Reset", review: "Review", reject: "Reject" };
-  const recClasses = { approve: "rec-approve", reset: "rec-reset", review: "rec-review", reject: "rec-reject" };
+  const recLabels = { approve: "Approve", reset: "Reset", review: "Review", reject: "Reject", no_profile: "No Profile" };
+  const recClasses = { approve: "rec-approve", reset: "rec-reset", review: "rec-review", reject: "rec-reject", no_profile: "" };
+  const status = p.verification_status || "";
+  const statusLabels = { verified: "Verified", flagged: "Flagged", pending_interview: "Pending", rejected: "Rejected", unverified: "Unverified", no_profile: "No Profile" };
   return {
     user_id: p.user_id,
     username: p.username,
@@ -30,6 +32,7 @@ function enrichProfile(p) {
     key_concerns: p.key_concerns || [],
     confidence_score: p.confidence_score,
     verified_by: p.verified_by,
+    verification_status: status,
     completion_percentage: p.completion_percentage,
     has_conversation: p.has_conversation,
     conversation_topic_id: p.conversation_topic_id,
@@ -38,6 +41,8 @@ function enrichProfile(p) {
     confidenceDisplay: formatScore(p.confidence_score),
     recBadgeClass: recClasses[p.recommendation] || "",
     recBadgeLabel: recLabels[p.recommendation] || p.recommendation || "—",
+    statusLabel: statusLabels[status] || status || "—",
+    statusClass: "status-" + status,
     firstConcern: (p.key_concerns && p.key_concerns.length > 0) ? p.key_concerns[0] : "—",
     registeredDisplay: formatDate(p.registered_at),
     verifiedAtDisplay: formatDate(p.verified_at),
@@ -55,6 +60,11 @@ function enrichProfile(p) {
     hasDenomination: !!(p.profile_excerpts?.denomination),
     hasAttendance: !!(p.profile_excerpts?.church_attendance),
     hasReason: !!p.recommendation_reason,
+    hasProfile: status !== "no_profile",
+    isFlagged: status === "flagged",
+    isVerified: status === "verified",
+    isPending: status === "pending_interview" || status === "unverified",
+    isRejected: status === "rejected",
   };
 }
 
@@ -70,25 +80,22 @@ export default class AdminMatchmakingVerificationQueue extends Component {
   @tracked confirmActionName = null;
   @tracked confirmUserId = null;
 
+  // Search state
+  @tracked searchQuery = "";
+  @tracked searchResults = [];
+  @tracked searchLoading = false;
+  @tracked searchPerformed = false;
+
   constructor() {
     super(...arguments);
     this.loadQueue();
   }
 
-  // Getters bake expand/confirm state into each profile so template
-  // only reads simple boolean properties — no method calls needed.
-  get flagged() {
-    return this._flagged.map((p) => this._withState(p));
-  }
-  get pending() {
-    return this._pending.map((p) => this._withState(p));
-  }
-  get verified() {
-    return this._verified.map((p) => this._withState(p));
-  }
-  get rejected() {
-    return this._rejected.map((p) => this._withState(p));
-  }
+  get flagged() { return this._flagged.map((p) => this._withState(p)); }
+  get pending() { return this._pending.map((p) => this._withState(p)); }
+  get verified() { return this._verified.map((p) => this._withState(p)); }
+  get rejected() { return this._rejected.map((p) => this._withState(p)); }
+  get searchList() { return this.searchResults.map((p) => this._withState(p)); }
 
   _withState(p) {
     const uid = p.user_id;
@@ -98,11 +105,11 @@ export default class AdminMatchmakingVerificationQueue extends Component {
       confirmReset: this.confirmActionName === "reset" && this.confirmUserId === uid,
       confirmReject: this.confirmActionName === "reject" && this.confirmUserId === uid,
       confirmBlock: this.confirmActionName === "block" && this.confirmUserId === uid,
-      showActions: !(this.confirmActionName && this.confirmUserId === uid),
     });
   }
 
   get currentList() {
+    if (this.activeTab === "search") return this.searchList;
     if (this.activeTab === "flagged") return this.flagged;
     if (this.activeTab === "pending") return this.pending;
     if (this.activeTab === "verified") return this.verified;
@@ -118,6 +125,7 @@ export default class AdminMatchmakingVerificationQueue extends Component {
   get isPendingTab() { return this.activeTab === "pending"; }
   get isVerifiedTab() { return this.activeTab === "verified"; }
   get isRejectedTab() { return this.activeTab === "rejected"; }
+  get isSearchTab() { return this.activeTab === "search"; }
 
   get emptyMessage() {
     const msgs = {
@@ -125,6 +133,7 @@ export default class AdminMatchmakingVerificationQueue extends Component {
       pending: "No users pending interview.",
       verified: "No recently verified users.",
       rejected: "No rejected users.",
+      search: this.searchPerformed ? "No users found." : "Enter a username to search.",
     };
     return msgs[this.activeTab] || "No data.";
   }
@@ -175,6 +184,10 @@ export default class AdminMatchmakingVerificationQueue extends Component {
     try {
       await ajax(`/matchmaking/admin/${actionName}/${userId}`, { type: "POST" });
       await this.loadQueue();
+      // Re-run search if we're on the search tab so results update
+      if (this.activeTab === "search" && this.searchQuery.trim()) {
+        await this.doSearch();
+      }
       this.expandedUserId = null;
     } catch (e) {
       popupAjaxError(e);
@@ -183,11 +196,66 @@ export default class AdminMatchmakingVerificationQueue extends Component {
 
   @action stopProp(e) { e.stopPropagation(); }
 
+  @action updateSearchQuery(e) {
+    this.searchQuery = e.target.value;
+  }
+
+  @action handleSearchKeydown(e) {
+    if (e.key === "Enter") {
+      this.doSearch();
+    }
+  }
+
+  @action async doSearch() {
+    const q = this.searchQuery.trim();
+    if (!q) return;
+
+    this.searchLoading = true;
+    this.searchPerformed = false;
+    this.activeTab = "search";
+    this.expandedUserId = null;
+    this.confirmActionName = null;
+    this.confirmUserId = null;
+
+    try {
+      const result = await ajax(`/matchmaking/admin/search?q=${encodeURIComponent(q)}`);
+      this.searchResults = (result.results || []).map(enrichProfile);
+      this.searchPerformed = true;
+    } catch (e) {
+      popupAjaxError(e);
+    } finally {
+      this.searchLoading = false;
+    }
+  }
+
+  @action clearSearch() {
+    this.searchQuery = "";
+    this.searchResults = [];
+    this.searchPerformed = false;
+    this.activeTab = "flagged";
+  }
+
   <template>
     <div class="admin-matchmaking-queue">
       <div class="queue-header">
         <h2>Verification Queue</h2>
-        <DButton @action={{this.loadQueue}} @icon="arrows-rotate" @label="matchmaking.admin.refresh" class="btn-default btn-small" />
+        <div class="header-actions">
+          <div class="search-bar">
+            <input
+              type="text"
+              placeholder="Search by username..."
+              value={{this.searchQuery}}
+              class="search-input"
+              {{on "input" this.updateSearchQuery}}
+              {{on "keydown" this.handleSearchKeydown}}
+            />
+            <DButton @action={{this.doSearch}} @icon="magnifying-glass" class="btn-primary btn-small" @title="matchmaking.admin.search_title" />
+            {{#if this.isSearchTab}}
+              <DButton @action={{this.clearSearch}} @icon="xmark" class="btn-default btn-small" @title="matchmaking.admin.clear_search" />
+            {{/if}}
+          </div>
+          <DButton @action={{this.loadQueue}} @icon="arrows-rotate" @label="matchmaking.admin.refresh" class="btn-default btn-small" />
+        </div>
       </div>
 
       <div class="queue-tabs">
@@ -195,15 +263,21 @@ export default class AdminMatchmakingVerificationQueue extends Component {
         <button type="button" class="btn btn-flat queue-tab {{if this.isPendingTab 'active'}}" {{on "click" (fn this.switchTab "pending")}}>Pending Interview{{#if this.pendingCount}} <span class="badge-count pending-badge">{{this.pendingCount}}</span>{{/if}}</button>
         <button type="button" class="btn btn-flat queue-tab {{if this.isVerifiedTab 'active'}}" {{on "click" (fn this.switchTab "verified")}}>Recent Verified</button>
         <button type="button" class="btn btn-flat queue-tab {{if this.isRejectedTab 'active'}}" {{on "click" (fn this.switchTab "rejected")}}>Rejected{{#if this.rejectedCount}} <span class="badge-count rejected-badge">{{this.rejectedCount}}</span>{{/if}}</button>
+        {{#if this.isSearchTab}}
+          <button type="button" class="btn btn-flat queue-tab active">Search Results</button>
+        {{/if}}
       </div>
 
       {{#if this.loading}}
         <div class="queue-loading">Loading verification data...</div>
+      {{else if this.searchLoading}}
+        <div class="queue-loading">Searching...</div>
       {{else if this.error}}
         <div class="queue-error">{{this.error}}</div>
       {{else if this.currentList.length}}
         <div class="queue-table-wrapper">
 
+          {{! ── FLAGGED TAB ── }}
           {{#if this.isFlaggedTab}}
             {{#each this.currentList as |profile|}}
               <div class="queue-card {{if profile.isExpanded 'expanded'}}" role="button" {{on "click" (fn this.toggleExpand profile.user_id)}}>
@@ -256,6 +330,73 @@ export default class AdminMatchmakingVerificationQueue extends Component {
               </div>
             {{/each}}
 
+          {{! ── SEARCH RESULTS TAB ── }}
+          {{else if this.isSearchTab}}
+            {{#each this.currentList as |profile|}}
+              <div class="queue-card {{if profile.isExpanded 'expanded'}}" role="button" {{on "click" (fn this.toggleExpand profile.user_id)}}>
+                <div class="card-summary">
+                  <div class="card-user">
+                    <a href="/admin/users/{{profile.user_id}}/{{profile.username}}" class="username-link" {{on "click" this.stopProp}}>{{profile.username}}</a>
+                    {{#if profile.name}}<span class="user-realname">{{profile.name}}</span>{{/if}}
+                  </div>
+                  <div class="card-meta">
+                    <span class="rec-badge {{profile.statusClass}}">{{profile.statusLabel}}</span>
+                    {{#if profile.hasProfile}}<span class="meta-label">Profile {{profile.completion_percentage}}%</span>{{/if}}
+                    {{#if profile.confidence_score}}<span class="confidence-score">{{profile.confidenceDisplay}}</span>{{/if}}
+                  </div>
+                  <div class="card-actions" {{on "click" this.stopProp}}>
+                    {{#if profile.hasProfile}}
+                      {{#if profile.confirmApprove}}
+                        <span class="confirm-prompt">Approve? <DButton @action={{fn this.performAction "approve" profile.user_id}} @label="matchmaking.admin.yes" class="btn-primary btn-small" /> <DButton @action={{this.cancelConfirm}} @label="matchmaking.admin.no" class="btn-default btn-small" /></span>
+                      {{else if profile.confirmReset}}
+                        <span class="confirm-prompt">Reset? <DButton @action={{fn this.performAction "reset" profile.user_id}} @label="matchmaking.admin.yes" class="btn-primary btn-small" /> <DButton @action={{this.cancelConfirm}} @label="matchmaking.admin.no" class="btn-default btn-small" /></span>
+                      {{else if profile.confirmReject}}
+                        <span class="confirm-prompt">Reject? <DButton @action={{fn this.performAction "reject" profile.user_id}} @label="matchmaking.admin.yes" class="btn-danger btn-small" /> <DButton @action={{this.cancelConfirm}} @label="matchmaking.admin.no" class="btn-default btn-small" /></span>
+                      {{else if profile.confirmBlock}}
+                        <span class="confirm-prompt">Reject + Block IP? <DButton @action={{fn this.performAction "block" profile.user_id}} @label="matchmaking.admin.yes" class="btn-danger btn-small" /> <DButton @action={{this.cancelConfirm}} @label="matchmaking.admin.no" class="btn-default btn-small" /></span>
+                      {{else}}
+                        {{#if profile.isFlagged}}
+                          <DButton @action={{fn this.requestConfirm "approve" profile.user_id}} @icon="check" @title="matchmaking.admin.approve_title" class="btn-primary btn-small" />
+                        {{/if}}
+                        <DButton @action={{fn this.requestConfirm "reset" profile.user_id}} @icon="arrows-rotate" @title="matchmaking.admin.reset_title" class="btn-default btn-small" />
+                        {{#if profile.isVerified}}
+                          <DButton @action={{fn this.requestConfirm "reject" profile.user_id}} @icon="xmark" @title="matchmaking.admin.reject_title" class="btn-danger btn-small" />
+                        {{/if}}
+                        {{#if profile.isFlagged}}
+                          <DButton @action={{fn this.requestConfirm "reject" profile.user_id}} @icon="xmark" @title="matchmaking.admin.reject_title" class="btn-danger btn-small" />
+                          <DButton @action={{fn this.requestConfirm "block" profile.user_id}} @icon="ban" @title="matchmaking.admin.block_title" class="btn-danger btn-small" />
+                        {{/if}}
+                      {{/if}}
+                    {{/if}}
+                  </div>
+                </div>
+                {{#if profile.isExpanded}}
+                  <div class="card-detail">
+                    {{#unless profile.hasProfile}}
+                      <div class="detail-section"><p class="rec-reason">This user has not created a matchmaking profile.</p></div>
+                    {{else}}
+                      {{#if profile.hasReason}}<div class="detail-section"><h4>Recommendation</h4><p class="rec-reason">{{profile.recommendation_reason}}</p></div>{{/if}}
+                      {{#if profile.hasConcerns}}<div class="detail-section"><h4>Key Concerns</h4><ul class="concerns-list">{{#each profile.key_concerns as |concern|}}<li>{{concern}}</li>{{/each}}</ul></div>{{/if}}
+                      {{#if profile.hasScores}}<div class="detail-section"><h4>Scores</h4><div class="scores-grid"><span class="score-chip">Coherence {{profile.coherenceDisplay}}</span><span class="score-chip">Depth {{profile.depthDisplay}}</span><span class="score-chip">Theology {{profile.theologyDisplay}}</span><span class="score-chip">Engagement {{profile.engagementDisplay}}</span><span class="score-chip">Completeness {{profile.completenessDisplay}}</span></div></div>{{/if}}
+                      <div class="detail-section"><h4>Profile</h4><div class="excerpts-grid">
+                        {{#if profile.hasDenomination}}<div class="excerpt-item"><strong>Denomination:</strong> {{profile.profile_excerpts.denomination}}</div>{{/if}}
+                        {{#if profile.hasAttendance}}<div class="excerpt-item"><strong>Attendance:</strong> {{profile.profile_excerpts.church_attendance}}</div>{{/if}}
+                        {{#if profile.hasTestimony}}<div class="excerpt-item full-width"><strong>Testimony:</strong> {{profile.profile_excerpts.testimony}}</div>{{/if}}
+                        {{#if profile.hasLifeGoals}}<div class="excerpt-item full-width"><strong>Life Goals:</strong> {{profile.profile_excerpts.life_goals}}</div>{{/if}}
+                        {{#if profile.hasPartner}}<div class="excerpt-item full-width"><strong>Partner:</strong> {{profile.profile_excerpts.partner_description}}</div>{{/if}}
+                        {{#if profile.hasMinistry}}<div class="excerpt-item full-width"><strong>Ministry:</strong> {{profile.profile_excerpts.ministry_involvement}}</div>{{/if}}
+                      </div></div>
+                      <div class="detail-links">
+                        {{#if profile.conversation_topic_id}}<a href="/t/{{profile.conversation_topic_id}}" class="btn btn-default btn-small" target="_blank" rel="noopener noreferrer">View Transcript</a>{{/if}}
+                        <a href="/admin/users/{{profile.user_id}}/{{profile.username}}" class="btn btn-default btn-small">Admin User Page</a>
+                      </div>
+                    {{/unless}}
+                  </div>
+                {{/if}}
+              </div>
+            {{/each}}
+
+          {{! ── PENDING TAB ── }}
           {{else if this.isPendingTab}}
             {{#each this.currentList as |profile|}}
               <div class="queue-card simple"><div class="card-summary">
@@ -264,6 +405,7 @@ export default class AdminMatchmakingVerificationQueue extends Component {
               </div></div>
             {{/each}}
 
+          {{! ── VERIFIED TAB ── }}
           {{else if this.isVerifiedTab}}
             {{#each this.currentList as |profile|}}
               <div class="queue-card simple"><div class="card-summary">
@@ -272,6 +414,7 @@ export default class AdminMatchmakingVerificationQueue extends Component {
               </div></div>
             {{/each}}
 
+          {{! ── REJECTED TAB ── }}
           {{else if this.isRejectedTab}}
             {{#each this.currentList as |profile|}}
               <div class="queue-card"><div class="card-summary">
