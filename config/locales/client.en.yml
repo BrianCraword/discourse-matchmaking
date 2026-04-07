@@ -10,6 +10,8 @@ en:
         block_title: "Block — reject and block IP"
         yes: "Yes"
         no: "Cancel"
+        search_title: "Search users"
+        clear_search: "Clear search"
     discourse_matchmaking:
       title: "Matchmaking Profile"
       feature:
