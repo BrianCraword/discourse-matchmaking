@@ -23,4 +23,5 @@ DiscourseMatchmaking::Engine.routes.draw do
   # Admin queue endpoints
   get    "/admin/queue"             => "profiles#admin_queue"
   get    "/admin/profile/:user_id"  => "profiles#admin_profile_detail"
+  get    "/admin/search"            => "profiles#admin_search"
 end
