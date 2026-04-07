@@ -531,11 +531,40 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 1em;
+    flex-wrap: wrap;
+    gap: 0.75em;
 
     h2 {
       margin: 0;
       font-size: var(--font-up-2);
       font-weight: 700;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75em;
+      flex-wrap: wrap;
+    }
+
+    .search-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.35em;
+
+      .search-input {
+        width: 200px;
+        padding: 0.4em 0.6em;
+        font-size: var(--font-down-1);
+        border: 1px solid var(--primary-low-mid);
+        border-radius: 4px;
+        background: var(--secondary);
+
+        &:focus {
+          border-color: var(--tertiary);
+          outline: none;
+        }
+      }
     }
   }
 
@@ -708,6 +737,14 @@
 
   .has-conv { color: var(--success); font-weight: 600; font-size: var(--font-down-1); }
   .no-conv { color: var(--primary-low-mid); font-size: var(--font-down-1); }
+
+  // Status badges for search results
+  .status-verified { background: var(--success-low); color: var(--success); }
+  .status-flagged { background: var(--danger-low); color: var(--danger); }
+  .status-pending_interview { background: var(--tertiary-low); color: var(--tertiary); }
+  .status-rejected { background: var(--danger-low); color: var(--danger); }
+  .status-unverified { background: var(--primary-low); color: var(--primary-medium); }
+  .status-no_profile { background: var(--primary-low); color: var(--primary-medium); }
 
   // ── Expanded Detail ──────────────────────────────────────────────
   .card-detail {
