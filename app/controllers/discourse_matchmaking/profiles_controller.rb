@@ -8,7 +8,7 @@ module DiscourseMatchmaking
     before_action :ensure_matchmaking_enabled
     before_action :ensure_user_in_allowed_group, except: %i[consent_status grant_consent show create update]
     before_action :ensure_consent, only: %i[show update]
-    before_action :ensure_admin, only: %i[admin_approve admin_reject admin_reset admin_block admin_queue admin_profile_detail]
+    before_action :ensure_admin, only: %i[admin_approve admin_reject admin_reset admin_block admin_queue admin_profile_detail admin_search]
 
     # GET /matchmaking/profile
     # Returns the current user's matchmaking profile, or nil if none exists
@@ -253,6 +253,40 @@ module DiscourseMatchmaking
         transcript_url: profile.verification_conversation_topic_id ?
           "#{Discourse.base_url}/t/#{profile.verification_conversation_topic_id}" : nil,
       }
+    end
+
+    # GET /matchmaking/admin/search?q=username
+    # Search for any user by username — returns profile if exists, user info if not
+    def admin_search
+      query = params[:q].to_s.strip
+      return render json: { error: "Search query required." }, status: 400 if query.blank?
+
+      # Find matching users (case-insensitive, prefix match)
+      users = User.where("username ILIKE ?", "#{query}%").limit(10)
+      results = users.map do |user|
+        profile = MatchmakingProfile.find_by(user_id: user.id)
+        if profile
+          admin_profile_hash(profile)
+        else
+          {
+            user_id: user.id,
+            username: user.username,
+            name: user.name,
+            avatar_url: user.avatar_template&.gsub("{size}", "45"),
+            registered_at: user.created_at&.iso8601,
+            trust_level: user.trust_level,
+            verification_status: "no_profile",
+            completion_percentage: 0,
+            has_conversation: false,
+            confidenceDisplay: "—",
+            recBadgeClass: "",
+            recBadgeLabel: "No Profile",
+            firstConcern: "User has not created a matchmaking profile",
+          }
+        end
+      end
+
+      render json: { results: results }
     end
 
     private
