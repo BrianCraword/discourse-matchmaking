@@ -828,4 +828,184 @@
       border-top: 1px solid var(--primary-low);
     }
   }
+  // ── Public Faith Profile Card (user-profile-primary) ────────────────
+// Displays on /u/username summary page for verified members
+
+.matchmaking-public-card {
+  margin-bottom: 1.5em;
+  padding: 1.25em 1.5em;
+  border: 1px solid var(--primary-low);
+  border-radius: 8px;
+  background: var(--secondary);
+
+  .mpc-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin-bottom: 1em;
+    padding-bottom: 0.75em;
+    border-bottom: 1px solid var(--primary-low);
+  }
+
+  .mpc-title {
+    font-size: var(--font-up-1);
+    font-weight: 700;
+    color: var(--primary);
+    margin: 0;
+    flex: 1;
+  }
+
+  .mpc-verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    font-size: var(--font-down-1);
+    font-weight: 600;
+    color: var(--success);
+    background: var(--success-very-low, rgba(0, 0, 0, 0.02));
+    border: 1px solid var(--success-low, rgba(0, 0, 0, 0.08));
+    border-radius: 4px;
+    padding: 0.15em 0.5em;
+    white-space: nowrap;
+  }
+
+  .mpc-edit-link {
+    font-size: var(--font-down-1);
+    color: var(--tertiary);
+    text-decoration: none;
+    white-space: nowrap;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  // Faith summary / testimony excerpt
+  .mpc-summary {
+    margin-bottom: 1em;
+
+    p {
+      color: var(--primary-high);
+      line-height: 1.6;
+      font-size: var(--font-0);
+      margin: 0;
+      // Subtle left accent
+      padding-left: 0.75em;
+      border-left: 3px solid var(--tertiary-low, var(--primary-low));
+    }
+  }
+
+  // Key-value detail pairs
+  .mpc-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.5em 1.5em;
+    margin-bottom: 1em;
+  }
+
+  .mpc-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1em;
+    padding: 0.4em 0;
+  }
+
+  .mpc-detail-label {
+    font-size: var(--font-down-2);
+    color: var(--primary-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+
+  .mpc-detail-value {
+    font-size: var(--font-0);
+    color: var(--primary);
+    font-weight: 500;
+  }
+
+  // Section headers within the card
+  .mpc-section {
+    margin-top: 0.75em;
+    padding-top: 0.75em;
+    border-top: 1px solid var(--primary-very-low);
+  }
+
+  .mpc-section-title {
+    font-size: var(--font-down-1);
+    font-weight: 700;
+    color: var(--primary);
+    margin: 0 0 0.5em 0;
+  }
+
+  // Theological views grid
+  .mpc-theology-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.35em 1.5em;
+  }
+
+  .mpc-theology-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.05em;
+    padding: 0.25em 0;
+  }
+
+  .mpc-theology-label {
+    font-size: var(--font-down-2);
+    color: var(--primary-medium);
+    font-weight: 600;
+  }
+
+  .mpc-theology-value {
+    font-size: var(--font-down-1);
+    color: var(--primary-high);
+  }
+
+  // Interest chips
+  .mpc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35em;
+  }
+
+  .mpc-chip {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    border-radius: 12px;
+    font-size: var(--font-down-1);
+    color: var(--primary-high);
+    background: var(--primary-very-low);
+    border: 1px solid var(--primary-low);
+    text-transform: capitalize;
+  }
+
+  // Setup prompt for own profile without matchmaking
+  &.mpc-setup-prompt {
+    background: var(--primary-very-low);
+    border-style: dashed;
+
+    .mpc-prompt-text {
+      color: var(--primary-medium);
+      font-size: var(--font-down-1);
+      line-height: 1.5;
+      margin: 0 0 0.75em 0;
+    }
+  }
+}
+
+// ── Responsive ──────────────────────────────────────────────────────
+@media (max-width: 600px) {
+  .matchmaking-public-card {
+    padding: 1em;
+
+    .mpc-details {
+      grid-template-columns: 1fr;
+    }
+
+    .mpc-theology-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
 }
