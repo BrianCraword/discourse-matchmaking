@@ -2,7 +2,7 @@
 
 # name: discourse-matchmaking
 # about: Christian matchmaking powered by Discourse AI — faith-based compatibility matching with AI-guided conversations
-# version: 0.4.0
+# version: 0.4.1
 # authors: Brian Crawford
 # url: https://github.com/BrianCrawford/discourse-matchmaking
 # required_version: 2.7.0
@@ -49,6 +49,38 @@ after_initialize do
   end
 
   require_relative "lib/discourse_matchmaking/scoring"
+
+  # ── Public Faith Profile on User Profile Page ──────────────────────
+  # Attaches curated matchmaking profile data to the UserSerializer so
+  # the faith card component can display it on /u/username without an
+  # extra API call. Returns nil (no card) for non-participants, unverified
+  # profiles, or when viewed by TL0 users.
+  add_to_serializer(:user, :matchmaking_public_profile) do
+    return nil unless SiteSetting.matchmaking_enabled
+
+    # Only show faith cards to TL1+ viewers (verified members)
+    return nil unless scope.user && scope.user.trust_level >= 1
+
+    profile = MatchmakingProfile.find_by(user_id: object.id)
+    return nil unless profile
+    return nil unless profile.verification_status == "verified"
+    return nil unless profile.active? && profile.visible?
+    return nil unless MatchmakingConsent.has_active_consent?(object.id, "ai_matching")
+
+    {
+      denomination: profile.denomination,
+      church_attendance: profile.church_attendance,
+      bible_engagement: profile.bible_engagement,
+      testimony_excerpt: profile.testimony&.truncate(250),
+      faith_summary: profile.faith_summary,
+      theological_views: profile.theological_views,
+      interests: profile.interests,
+      relationship_intention: profile.relationship_intention,
+      state: profile.state,
+      country: profile.country,
+      verification_status: profile.verification_status,
+    }
+  end
 
   # Add new users to pending_verification group at registration
   # so they can access the Verification Companion before creating a profile
