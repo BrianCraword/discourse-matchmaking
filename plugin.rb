@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # name: discourse-matchmaking
-# about: Christian matchmaking powered by Discourse AI — faith-based compatibility matching with AI-guided conversations
+# about: Christian matchmaking powered by Victorious Christians AI — faith-based compatibility matching with AI-guided conversations
 # version: 0.4.1
 # authors: Brian Crawford
 # url: https://github.com/BrianCrawford/discourse-matchmaking
