@@ -4,17 +4,17 @@ module DiscourseMatchmaking
   module PersonaExtension
     def craft_prompt(context, llm: nil)
       if SiteSetting.matchmaking_enabled && context.user.present?
-        # Detect which persona is active
-        is_matchmaking_persona = detect_persona(SiteSetting.matchmaking_persona_user_id, "matchmaking guide for Jesus Enough")
+        # Detect if this is the Verification Companion — it gets special handling
         is_verification_persona = detect_persona(
           (SiteSetting.respond_to?(:matchmaking_verification_persona_user_id) ? SiteSetting.matchmaking_verification_persona_user_id : nil),
           "verification companion for Jesus Enough"
         )
 
-        if is_matchmaking_persona
-          inject_matchmaking_context(context)
-        elsif is_verification_persona
+        if is_verification_persona
           inject_verification_context(context)
+        else
+          # All other personas (Logos_bot, InsightAI, future personas) get profile awareness
+          inject_matchmaking_context(context)
         end
       end
 
@@ -105,6 +105,14 @@ module DiscourseMatchmaking
       parts << "- Ministry: #{profile.ministry_involvement}" if profile.ministry_involvement.present?
       parts << "- Looking for: #{profile.partner_description}" if profile.partner_description.present?
       parts << "- Interests: #{profile.interests.join(', ')}" if profile.interests.present? && profile.interests.any?
+
+      if profile.faith_summary.present?
+        parts << ""
+        parts << "**Faith Summary (AI-generated):** #{profile.faith_summary}"
+      end
+
+      parts << ""
+      parts << "- Verification status: #{profile.verification_status}"
 
       previous_searches = MatchmakingMatch.where(searcher_id: user.id).select(:created_at).distinct.count
       parts << "- Previous searches: #{previous_searches}"
