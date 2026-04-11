@@ -1,9 +1,11 @@
 import Component from "@glimmer/component";
 import { tracked } from "@glimmer/tracking";
-import { ajax } from "discourse/lib/ajax";
+import { inject as service } from "@ember/service";
 import { i18n } from "discourse-i18n";
 
 export default class MatchmakingCard extends Component {
+  @service router;
+
   @tracked profileData = null;
   @tracked loading = true;
 
@@ -25,15 +27,20 @@ export default class MatchmakingCard extends Component {
     return currentUser && this.user && currentUser.id === this.user.id;
   }
 
-  // Only show if the user JSON contains matchmaking data
-  // (serializer returns null for non-participants / non-verified)
+  // Only show on the Summary tab — not Activity, Messages, etc.
+  get isSummaryTab() {
+    const route = this.router.currentRouteName;
+    return route === "user.summary" || route === "user.index";
+  }
+
+  // Only show if the user JSON contains matchmaking data AND we're on Summary
   get shouldShow() {
-    return this.hasProfile && !this.loading;
+    return this.hasProfile && !this.loading && this.isSummaryTab;
   }
 
   // Show a prompt for own profile if no matchmaking profile exists
   get showSetupPrompt() {
-    return this.isOwnProfile && !this.hasProfile && !this.loading;
+    return this.isOwnProfile && !this.hasProfile && !this.loading && this.isSummaryTab;
   }
 
   get preferencesUrl() {
@@ -147,8 +154,6 @@ export default class MatchmakingCard extends Component {
 
   async loadPublicProfile() {
     try {
-      // The matchmaking_public_profile is attached to the user model
-      // via add_to_serializer in plugin.rb — it arrives with the user JSON
       const profile = this.user?.matchmaking_public_profile;
       if (profile) {
         this.profileData = profile;
