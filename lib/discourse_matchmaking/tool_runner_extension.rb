@@ -31,6 +31,9 @@ module DiscourseMatchmaking
       };
     JS
 
+    # PluginStore key for persisting candidate label → user_id mapping between tool calls
+    CANDIDATE_MAP_KEY_PREFIX = "matchmaking_last_results_"
+
     def mini_racer_context
       @mini_racer_context ||=
         begin
@@ -52,6 +55,27 @@ module DiscourseMatchmaking
     end
 
     private
+
+    # Store candidate mapping in PluginStore so it persists across tool invocations
+    def self.store_candidate_map(user_id, mapping)
+      PluginStore.set(
+        DiscourseMatchmaking::PLUGIN_NAME,
+        "#{CANDIDATE_MAP_KEY_PREFIX}#{user_id}",
+        mapping.to_json,
+      )
+    end
+
+    # Retrieve candidate mapping from PluginStore
+    def self.load_candidate_map(user_id)
+      raw = PluginStore.get(
+        DiscourseMatchmaking::PLUGIN_NAME,
+        "#{CANDIDATE_MAP_KEY_PREFIX}#{user_id}",
+      )
+      return {} unless raw
+      JSON.parse(raw)
+    rescue JSON::ParserError
+      {}
+    end
 
     def attach_verification(mini_racer_context)
       mini_racer_context.attach(
@@ -115,7 +139,6 @@ module DiscourseMatchmaking
                 Rails.logger.warn(
                   "[discourse-matchmaking] Failed to parse enrichment summary for user #{user_id}: #{e.message}"
                 )
-                # Continue without enrichment — the conversation transcript is still available
               end
             end
 
@@ -146,8 +169,6 @@ module DiscourseMatchmaking
     end
 
     def attach_matchmaking(mini_racer_context)
-      @matchmaking_last_results = {}
-
       mini_racer_context.attach(
         "_matchmaking_search",
         ->(params_json) do
@@ -206,10 +227,10 @@ module DiscourseMatchmaking
             top = scored.first(max_results)
 
             # Build LLM results AND store candidate label → user_id mapping
-            @matchmaking_last_results = {}
+            candidate_map = {}
             llm_results = top.each_with_index.map do |entry, idx|
               label = ("A".ord + idx).chr
-              @matchmaking_last_results[label] = entry[:profile].user_id
+              candidate_map[label] = entry[:profile].user_id
 
               hash = entry[:profile].to_llm_hash(
                 candidate_label: label,
@@ -226,6 +247,9 @@ module DiscourseMatchmaking
 
               hash
             end
+
+            # Persist candidate mapping so introduce() can find it in a later tool call
+            ToolRunnerExtension.store_candidate_map(user_id, candidate_map)
 
             shown_to_user = SiteSetting.matchmaking_results_shown_to_user rescue 5
             JSON.generate({
@@ -266,8 +290,11 @@ module DiscourseMatchmaking
             return JSON.generate({ error: "No user context" }) unless user_id
             return JSON.generate({ error: "Matchmaking not enabled" }) unless SiteSetting.matchmaking_enabled
 
-            candidate_user_id = @matchmaking_last_results[candidate_label.to_s.strip.upcase]
+            # Load the persisted candidate mapping from PluginStore
+            candidate_map = ToolRunnerExtension.load_candidate_map(user_id)
+            candidate_user_id = candidate_map[candidate_label.to_s.strip.upcase]
 
+            # Fallback: try matching by first name
             unless candidate_user_id
               candidate_profile = MatchmakingProfile
                 .searchable
